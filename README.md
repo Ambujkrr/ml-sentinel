@@ -260,11 +260,12 @@ considerations.
 ## Deployment
 
 Use a Docker web service plus PostgreSQL. Set `DATABASE_URL`, `APP_ENV`, and
-`UPLOAD_DIR`. The container reads `PORT` when set and runs migrations before
-starting Uvicorn. Attach durable storage at the upload path: many hosts,
-including Render by default, use ephemeral filesystems. See
-[`docs/deployment.md`](docs/deployment.md) for a Render checklist. No deployment
-or GitHub push was performed here.
+`UPLOAD_DIR`. The container reads Render's `PORT` when set and runs migrations
+before starting Uvicorn. `/health` checks database connectivity. Durable CSV
+uploads require a paid Render web service with a persistent disk; a Free web
+service has an ephemeral filesystem and is suitable only for a disposable
+demo. See [`docs/deployment.md`](docs/deployment.md) for exact manual setup and
+plan limitations. No Render deployment has been performed.
 
 ## Project Structure
 
@@ -290,6 +291,9 @@ docs/                 Deployment and verification notes
   public demo; add access control before accepting sensitive data.
 - Local uploads require a persistent disk and are tied to one application
   instance. Object storage would be needed for scaling across instances.
+- Render's Free web service cannot attach a persistent disk. After a restart,
+  PostgreSQL metadata can outlive uploaded CSV files, so existing runs remain
+  visible but those datasets cannot be compared again.
 - Monitoring runs are triggered manually; there is no streaming or scheduler.
 - KS p-values and PSI thresholds are signals, not proof of business impact.
   Many simultaneous feature tests can produce false positives.

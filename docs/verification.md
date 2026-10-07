@@ -76,3 +76,18 @@ written to the repository, so avoid recreating this verification project with
 the example environment file. For a reproducible long-term Compose setup,
 create an ignored `.env` with matching database credentials as described in
 the README.
+
+## Render preparation checks (not a deployment)
+
+After making `/health` dependent on a successful database `SELECT 1`, the full
+suite passed with 87 tests and one Starlette/AnyIO deprecation warning. A test
+also confirmed that an unavailable database produces HTTP 503 without exposing
+the underlying exception. Python compilation, application imports, dependency
+consistency, JavaScript syntax, and Docker Compose configuration all passed.
+
+The current Dockerfile built locally. A temporary container used
+`APP_ENV=production`, `PORT=10000`, and the existing isolated local PostgreSQL
+database. Its startup migration reached `0005 (head)`; `/`, `/health`, and
+`/dashboard` each returned HTTP 200 through a host mapping to container port
+10000. Its logs showed no error. The temporary container was stopped and
+removed after the check. No Render service or database was created.
