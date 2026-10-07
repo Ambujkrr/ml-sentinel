@@ -1,0 +1,42 @@
+services:
+  api:
+    build:
+      context: .
+    command: sh -c "alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+    ports:
+      - "8000:8000"
+    environment:
+      APP_NAME: ${APP_NAME:-ML Sentinel}
+      APP_ENV: ${APP_ENV:-development}
+      DATABASE_URL: ${DATABASE_URL:?Copy .env.example to .env and set DATABASE_URL}
+      UPLOAD_DIR: /app/data/uploads
+    volumes:
+      - ./app:/app/app
+      - uploads_data:/app/data/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    init: true
+
+  db:
+    image: postgres:17-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-ml_sentinel}
+      POSTGRES_USER: ${POSTGRES_USER:-ml_sentinel}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Copy .env.example to .env and set POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  uploads_data:

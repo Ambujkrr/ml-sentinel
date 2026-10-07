@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101827">
+  <title>ML Sentinel — Monitoring Console</title>
+  <link rel="stylesheet" href="/assets/dashboard.css">
+  <script src="/assets/dashboard.js" defer></script>
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand"><span class="brand-icon">◈</span><div><strong>ML Sentinel</strong><small>MONITORING PLATFORM</small></div></div>
+      <nav aria-label="Main navigation">
+        <a class="nav-active" href="/dashboard">◉ <span>Overview</span></a>
+        <a href="#models-section">▤ <span>Models & datasets</span></a>
+        <a href="#runs-section">◷ <span>Monitoring history</span></a>
+        <a href="#alerts-section">◇ <span>Alerts</span></a>
+      </nav>
+      <div class="sidebar-bottom"><span class="live-dot"></span> Live data from your uploads</div>
+    </aside>
+    <main>
+      <header class="topbar"><div class="breadcrumbs">Workspace <span>/</span> Overview</div><div class="top-right"><span class="live-dot"></span> ML monitoring console</div></header>
+      <div class="content">
+        <div class="heading-row"><div><div class="eyebrow">YOUR MONITORING WORKSPACE</div><h1>Model health at a glance</h1><p class="intro">Track dataset quality, distribution shifts, and classification performance using uploaded CSV data.</p></div><button id="refresh" class="outline-button">↻ Refresh data</button></div>
+        <div id="flash" class="flash" role="status" aria-live="polite" hidden></div>
+        <section class="stats" aria-label="Monitoring summary">
+          <div class="stat"><span>MONITORED MODELS</span><strong id="stat-models">—</strong><small>Registered services</small></div>
+          <div class="stat"><span>DATASETS</span><strong id="stat-datasets">—</strong><small>Reference and production</small></div>
+          <div class="stat"><span>DRIFT RUNS</span><strong id="stat-runs">—</strong><small>Saved comparisons</small></div>
+          <div class="stat"><span>OPEN ALERTS</span><strong id="stat-alerts">—</strong><small>Needs review</small></div>
+        </section>
+        <section class="panel" id="models-section">
+          <div class="section-heading"><div><h2>Models & datasets</h2><p>Register a model and upload a reference baseline and production sample.</p></div><span class="section-tag">01 / SETUP</span></div>
+          <div class="two-column">
+            <form id="model-form" class="soft-card"><h3>Register model</h3><label>Name<input name="name" maxlength="120" placeholder="Loan default risk" required></label><label>Version<input name="model_version" maxlength="80" placeholder="1.0" value="1.0" required></label><label>Description<textarea name="description" rows="2" maxlength="4000" placeholder="Optional context"></textarea></label><button class="primary-button">Create model</button></form>
+            <div class="soft-card"><h3>Selected model</h3><label>Model<select id="model-select" aria-label="Selected model"></select></label><div id="model-summary" class="selected-summary">Register a model to get started.</div><div class="inline-note">The reference dataset represents your baseline. Production datasets are compared against it.</div></div>
+          </div>
+          <div class="divider"></div>
+          <div class="section-heading compact"><div><h3>Upload dataset</h3><p>UTF-8 CSV · Maximum 10 MB and 100,000 rows</p></div></div>
+          <form id="upload-form" class="upload-form"><label>Dataset name<input name="name" placeholder="October production batch" maxlength="120" required></label><label>Type<select name="dataset_type"><option value="reference">Reference</option><option value="production">Production</option></select></label><label>CSV file<input name="file" type="file" accept=".csv,text/csv" required></label><button class="primary-button">Upload CSV</button></form>
+          <div id="dataset-list" class="table-wrap"></div>
+        </section>
+        <section class="panel" id="run-section"><div class="section-heading"><div><h2>Run monitoring</h2><p>Compare a production sample with its reference baseline.</p></div><span class="section-tag">02 / ANALYZE</span></div>
+          <form id="run-form" class="run-form"><label>Reference dataset<select name="reference_dataset_id" id="reference-select"></select></label><label>Production dataset<select name="production_dataset_id" id="production-select"></select></label><label>Prediction column <small>(optional)</small><input name="prediction_column" placeholder="prediction"></label><label>Actual column <small>(optional)</small><input name="target_column" placeholder="actual"></label><button class="primary-button">Run comparison →</button></form><p class="inline-note">Prediction drift uses the prediction column. Classification metrics are calculated only when actual labels are present.</p>
+        </section>
+        <section class="panel" id="runs-section"><div class="section-heading"><div><h2>Monitoring history</h2><p>Calculated runs are saved so you can inspect earlier changes.</p></div><span class="section-tag">03 / INVESTIGATE</span></div><div id="run-list" class="table-wrap"></div></section>
+        <section class="panel" id="detail-section" hidden><div class="section-heading"><div><h2 id="detail-title">Run details</h2><p id="detail-subtitle"></p></div><span id="detail-status"></span></div><div id="detail-summary" class="detail-grid"></div><div id="performance-panel"></div><div id="schema-panel"></div><div id="feature-panel"></div><div class="chart-panel"><div class="section-heading compact"><div><h3>Distribution comparison</h3><p>Reference and production proportions, calculated from uploaded rows.</p></div><select id="feature-select" aria-label="Feature to chart"></select></div><div class="chart-legend"><span><i class="legend-ref"></i> Reference</span><span><i class="legend-prod"></i> Production</span></div><div id="chart" class="chart"></div></div></section>
+        <section class="panel" id="alerts-section"><div class="section-heading"><div><h2>Recent alerts</h2><p>Signals derived from monitoring results and data quality.</p></div><span class="section-tag">04 / REVIEW</span></div><div id="alert-list" class="table-wrap"></div></section>
+        <footer>ML Sentinel · Monitoring results are statistical signals and require domain review.</footer>
+      </div>
+    </main>
+  </div>
+</body>
+</html>
