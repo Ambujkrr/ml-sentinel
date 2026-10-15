@@ -147,6 +147,31 @@ into its markup and requires no separate frontend build process.
 
 ## Demo
 
+Click **Load Demo Data** on `/dashboard` for a one-click walkthrough. The first
+request atomically creates one shared synthetic model, three profiles/datasets,
+two comparisons, and their result-based alerts using the tracked CSVs and the
+same monitoring pipeline as uploads. Later clicks reuse those exact records;
+concurrent requests are serialized by the reserved model primary key. `GET
+/demo` only describes the demo; `POST /demo/load` accepts no parameters (an
+empty body or `{}` only, at most 256 bytes).
+
+The shared demo is read-only: uploads and alert resolution are rejected for
+this model, and comparisons return the two saved results with `prediction` and
+`actual` columns instead of generating more runs. This works after a Render
+restart even with an empty upload directory: demo initialization reads the CSVs
+bundled in the Docker image and all later views use saved database reports.
+Ordinary user uploads retain the existing ephemeral-storage limitations.
+Register a separate model to experiment with your own uploads and comparisons.
+
+The demo never resets or overwrites existing records, including older manually
+uploaded demo models. A damaged seed or reserved-ID collision returns HTTP 409
+for operator review; initialization errors roll back the entire transaction.
+Saved reports retain their original thresholds until an operator explicitly
+manages them; the public endpoint cannot reset or regenerate the seed. The
+shared database still has no authentication, and the existing general upload
+and model APIs keep their documented public-access limitations. No demo state
+survives expiry or deletion of the free PostgreSQL database itself.
+
 The tracked `demo/` folder contains three synthetic loan risk datasets with
 240 rows each: `reference.csv`, `production_normal.csv`, and
 `production_drifted.csv`. They include age, income, credit score, loan amount,
@@ -178,6 +203,7 @@ Interview walkthrough:
 | --- | --- | --- |
 | GET | `/`, `/health` | Application and health status |
 | GET | `/dashboard` | Monitoring console |
+| GET, POST | `/demo`, `/demo/load` | Demo metadata and bounded, idempotent synthetic initialization |
 | POST, GET | `/models` | Register and list models |
 | GET | `/models/{model_id}` | Model details |
 | POST, GET | `/models/{model_id}/datasets` | Upload and list model datasets |

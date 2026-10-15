@@ -24,6 +24,11 @@
       <header class="topbar"><div class="breadcrumbs">Workspace <span>/</span> Overview</div><div class="top-right"><span class="live-dot"></span> ML monitoring console</div></header>
       <div class="content">
         <div class="heading-row"><div><div class="eyebrow">YOUR MONITORING WORKSPACE</div><h1>Model health at a glance</h1><p class="intro">Track dataset quality, distribution shifts, and classification performance using uploaded CSV data.</p></div><button id="refresh" class="outline-button">↻ Refresh data</button></div>
+        <section class="demo-banner" aria-label="Synthetic demo">
+          <div><strong>Explore a synthetic loan-risk demo</strong><p>Compare normal and shifted data, inspect model performance, and review alerts. No uploads needed. Safe to load again.</p></div>
+          <button id="load-demo" type="button" class="primary-button">Load Demo Data</button>
+        </section>
+        <p id="demo-note" class="inline-note" hidden>This is a shared, read-only synthetic demo. Comparisons open saved results, including after restarts. Register a separate model to upload your own data.</p>
         <div id="flash" class="flash" role="status" aria-live="polite" hidden></div>
         <section class="stats" aria-label="Monitoring summary">
           <div class="stat"><span>MONITORED MODELS</span><strong id="stat-models">—</strong><small>Registered services</small></div>

@@ -1,5 +1,10 @@
 const $ = (selector) => document.querySelector(selector);
-const state = { models: [], datasets: [], runs: [], alerts: [], modelId: null, currentRun: null };
+const state = { models: [], datasets: [], runs: [], alerts: [], modelId: null, currentRun: null,
+  demo: null, demoSelected: false, previousColumns: null };
+
+function isDemoModel() {
+  return state.demo !== null && state.modelId === state.demo.model_id;
+}
 
 function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>"']/g, (character) =>
@@ -44,12 +49,26 @@ function table(headers, rows, emptyMessage) {
   return `<table class="data-table"><thead><tr>${headers.map((h) => `<th>${escapeHtml(h)}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table>`;
 }
 
-async function refresh(keepModel = true) {
+async function refresh(keepModel = true, preferredModelId = null) {
   try {
     const [models, runs, alerts] = await Promise.all([
       api('/models?limit=200'), api('/monitoring/runs?limit=200'), api('/alerts?limit=200')
     ]);
+    const selectedId = preferredModelId || (keepModel ? state.modelId : null);
+    // Keep the shared demo accessible even if newer user records fill a page.
+    if (selectedId && !models.some((model) => model.id === selectedId)) {
+      models.push(await api(`/models/${selectedId}`));
+    }
+    if (selectedId && selectedId === state.demo?.model_id) {
+      const [demoRuns, demoAlerts] = await Promise.all([
+        api(`/monitoring/runs?model_id=${selectedId}&limit=200`),
+        api(`/alerts?model_id=${selectedId}&limit=200`)
+      ]);
+      runs.push(...demoRuns.filter((run) => !runs.some((existing) => existing.id === run.id)));
+      alerts.push(...demoAlerts.filter((alert) => !alerts.some((existing) => existing.id === alert.id)));
+    }
     state.models = models; state.runs = runs; state.alerts = alerts;
+    if (preferredModelId) state.modelId = preferredModelId;
     if (!keepModel || !models.some((model) => model.id === state.modelId)) {
       state.modelId = models[0]?.id ?? null;
     }
@@ -63,8 +82,10 @@ async function refresh(keepModel = true) {
     $('#stat-alerts').textContent = alerts.filter((alert) => !alert.resolved_at).length;
     renderRuns();
     renderAlerts();
+    return true;
   } catch (error) {
     flash(`${error.message} Check that the database is running and migrations have been applied.`, true);
+    return false;
   }
 }
 
@@ -75,14 +96,30 @@ async function loadModel() {
   $('#model-summary').textContent = model
     ? `${model.name} · Version ${model.model_version} · ${model.description || 'No description'}`
     : 'Register a model to get started.';
+  const demo = isDemoModel();
+  $('#demo-note').hidden = !demo;
+  $('#upload-form').querySelectorAll('input, select, button').forEach((input) => { input.disabled = demo; });
+  const predictionInput = $('#run-form [name=prediction_column]');
+  const actualInput = $('#run-form [name=target_column]');
+  if (demo && !state.demoSelected) {
+    state.previousColumns = [predictionInput.value, actualInput.value];
+    predictionInput.value = 'prediction'; actualInput.value = 'actual';
+  } else if (!demo && state.demoSelected) {
+    [predictionInput.value, actualInput.value] = state.previousColumns || ['', ''];
+  }
+  predictionInput.readOnly = demo; actualInput.readOnly = demo;
+  $('#run-form button').textContent = demo ? 'View comparison →' : 'Run comparison →';
+  state.demoSelected = demo;
   $('#dataset-list').innerHTML = table(['DATASET', 'TYPE', 'ROWS', 'COLUMNS', 'UPLOADED', 'QUALITY'],
     state.datasets.map((dataset) => `<tr><td>${escapeHtml(dataset.name)}</td><td>${badge(dataset.dataset_type)}</td><td>${dataset.row_count}</td><td>${dataset.column_count}</td><td>${date(dataset.created_at)}</td><td><button data-profile="${dataset.id}">View report</button></td></tr>`),
     'No datasets uploaded for this model.');
   for (const [selector, type] of [['#reference-select', 'reference'], ['#production-select', 'production']]) {
     const items = state.datasets.filter((dataset) => dataset.dataset_type === type);
+    const previousValue = $(selector).value;
     $(selector).innerHTML = items.length
       ? items.map((dataset) => `<option value="${dataset.id}">${escapeHtml(dataset.name)} (${dataset.row_count} rows)</option>`).join('')
       : `<option value="">No ${type} dataset</option>`;
+    if (items.some((dataset) => dataset.id === previousValue)) $(selector).value = previousValue;
   }
 }
 
@@ -99,7 +136,7 @@ function renderRuns() {
 function renderAlerts() {
   const selected = state.alerts.filter((alert) => alert.model_id === state.modelId);
   $('#alert-list').innerHTML = table(['DATE', 'SEVERITY', 'TYPE', 'MESSAGE', 'STATE'],
-    selected.map((alert) => `<tr><td>${date(alert.created_at)}</td><td>${badge(alert.severity)}</td><td>${escapeHtml(alert.alert_type.replaceAll('_', ' '))}</td><td>${escapeHtml(alert.message)}</td><td>${alert.resolved_at ? badge('resolved') : `<button data-resolve="${alert.id}">Resolve</button>`}</td></tr>`),
+    selected.map((alert) => `<tr><td>${date(alert.created_at)}</td><td>${badge(alert.severity)}</td><td>${escapeHtml(alert.alert_type.replaceAll('_', ' '))}</td><td>${escapeHtml(alert.message)}</td><td>${isDemoModel() ? '<span class="inline-note">Demo · read-only</span>' : alert.resolved_at ? badge('resolved') : `<button data-resolve="${alert.id}">Resolve</button>`}</td></tr>`),
     'No alerts for this model.');
 }
 
@@ -153,7 +190,8 @@ async function showRun(runId) {
     $('#feature-select').innerHTML = features.map((item, index) => `<option value="${index}">${escapeHtml(item.feature)}</option>`).join('');
     drawChart(features[0]?.distribution);
     $('#detail-section').scrollIntoView({ behavior: 'smooth' });
-  } catch (error) { flash(error.message, true); }
+    return true;
+  } catch (error) { flash(error.message, true); return false; }
 }
 
 function drawChart(distribution) {
@@ -204,6 +242,26 @@ $('#model-select').addEventListener('change', async (event) => {
 
 $('#refresh').addEventListener('click', () => refresh());
 
+$('#load-demo').addEventListener('click', async () => {
+  const button = $('#load-demo');
+  if (button.disabled) return;
+  button.disabled = true;
+  button.setAttribute('aria-busy', 'true');
+  button.textContent = 'Loading demo…';
+  try {
+    state.demo = await api('/demo/load', { method: 'POST' });
+    if (!await refresh(true, state.demo.model_id)) return;
+    $('#production-select').value = state.demo.dataset_ids.shifted;
+    if (!await showRun(state.demo.run_ids.shifted)) return;
+    flash('Synthetic demo loaded. Compare the normal and shifted samples in monitoring history.');
+  } catch (error) { flash(error.message, true); }
+  finally {
+    button.disabled = false;
+    button.removeAttribute('aria-busy');
+    button.textContent = 'Load Demo Data';
+  }
+});
+
 $('#model-form').addEventListener('submit', async (event) => {
   event.preventDefault();
   const form = event.currentTarget;
@@ -240,7 +298,7 @@ $('#run-form').addEventListener('submit', async (event) => {
     const run = await api('/monitoring/drift', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
     await refresh();
     await showRun(run.id);
-    flash(`Monitoring finished: ${run.overall_status}.`);
+    flash(isDemoModel() ? `Saved demo comparison: ${run.overall_status}.` : `Monitoring finished: ${run.overall_status}.`);
   } catch (error) { flash(error.message, true); }
 });
 
@@ -261,4 +319,5 @@ $('#feature-select').addEventListener('change', (event) => {
   drawChart(features[Number(event.target.value)]?.distribution);
 });
 
-refresh();
+// Metadata is read-only. Merely opening the dashboard never seeds the database.
+api('/demo').then((demo) => { state.demo = demo; }).catch(() => {}).finally(() => refresh());

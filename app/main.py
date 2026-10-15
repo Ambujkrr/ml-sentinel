@@ -13,6 +13,7 @@ from app.api.routes.datasets import router as datasets_router
 from app.api.routes.profiles import router as profiles_router
 from app.api.routes.monitoring import router as monitoring_router
 from app.api.routes.alerts import router as alerts_router
+from app.api.routes.demo import router as demo_router
 from app.core.config import get_settings
 
 settings = get_settings()
@@ -30,6 +31,7 @@ app.include_router(datasets_router)
 app.include_router(profiles_router)
 app.include_router(monitoring_router)
 app.include_router(alerts_router)
+app.include_router(demo_router)
 
 WEB_DIR = Path(__file__).parent / "web"
 app.mount("/assets", StaticFiles(directory=WEB_DIR), name="assets")

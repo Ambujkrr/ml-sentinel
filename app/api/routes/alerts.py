@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.models.domain import Alert, utc_now
 from app.schemas.alerts import AlertRead
+from app.services.demo import DEMO_MODEL_ID
 
 router = APIRouter(prefix="/alerts", tags=["alerts"])
 
@@ -29,6 +30,8 @@ def resolve_alert(alert_id: UUID, db: Session = Depends(get_db)):
     alert = db.get(Alert, str(alert_id))
     if alert is None:
         raise HTTPException(404, "Alert not found")
+    if alert.model_id == DEMO_MODEL_ID:
+        raise HTTPException(409, "Shared synthetic demo alerts are read-only")
     if alert.resolved_at is None:
         alert.resolved_at = utc_now()
         db.commit()

@@ -10,6 +10,7 @@ from app.db.session import get_db
 from app.models.domain import Dataset
 from app.schemas.domain import DatasetRead
 from app.services.ingestion import ingest_dataset
+from app.services.demo import DEMO_MODEL_ID
 from app.services.storage import LocalStorage, get_storage
 
 router = APIRouter(tags=["datasets"])
@@ -21,6 +22,8 @@ def upload_dataset(model_id: UUID, name: str = Form(..., min_length=1, max_lengt
                    file: UploadFile = File(...), db: Session = Depends(get_db),
                    storage: LocalStorage = Depends(get_storage)):
     require_model(db, str(model_id))
+    if str(model_id) == DEMO_MODEL_ID:
+        raise HTTPException(409, "The shared synthetic demo is read-only; register a separate model for uploads")
     if not name.strip():
         raise HTTPException(422, "Dataset name must not be blank")
     return ingest_dataset(db, storage, str(model_id), name.strip(), dataset_type, file)

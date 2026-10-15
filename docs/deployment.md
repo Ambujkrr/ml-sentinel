@@ -23,6 +23,14 @@ currently expire after 30 days and do not have managed backups. Check current
 plan terms before choosing a service. A persistent disk permits only one web
 service instance and disables zero-downtime deploys.
 
+The dashboard's **Load Demo Data** feature is an exception to the upload-file
+limitation: it initializes a single protected synthetic model from the CSVs
+bundled in the Docker image, then serves saved profiles, comparisons, and alerts
+from PostgreSQL. It writes no CSVs to the upload directory, and repeated loads
+or comparison clicks do not add records. No additional environment variables,
+disk, migration, or paid service is needed. Ordinary user uploads still depend
+on local CSV files, and database expiry still removes the demo's saved state.
+
 ## Manual Render setup, when deployment is authorized
 
 1. Create a Render PostgreSQL database. Put it in the same region as the future
