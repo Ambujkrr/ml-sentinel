@@ -2,6 +2,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import require_dataset
@@ -38,6 +39,9 @@ def run_drift(payload: DriftRunCreate, db: Session = Depends(get_db),
         run = create_monitoring_run(db, ref, prod, reference_frame, production_frame,
                                     payload.prediction_column, payload.target_column)
         db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(409, "Datasets changed while monitoring was running; reload and try again") from exc
     except Exception:
         db.rollback()
         raise

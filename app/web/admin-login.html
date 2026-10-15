@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Administrator sign-in — ML Sentinel</title><link rel="stylesheet" href="/assets/dashboard.css"></head>
+<body><main class="admin-login"><section class="panel">
+  <h1>Administrator sign-in</h1>
+  <p class="inline-note">Administrator access allows deleting unused ordinary datasets only. Shared demo datasets and monitoring history remain protected. Your session lasts 15 minutes.</p>
+  <!--ADMIN_ERROR-->
+  <form action="/admin/login" method="post">
+    <label>Administrator username<input name="username" autocomplete="username" maxlength="80" required></label>
+    <label>Administrator password<input name="password" type="password" autocomplete="current-password" maxlength="256" required></label>
+    <button class="primary-button" type="submit">Sign in</button>
+  </form>
+  <p><a class="outline-button" href="/dashboard">Back to dashboard</a></p>
+</section></main></body></html>

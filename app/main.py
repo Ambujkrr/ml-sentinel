@@ -14,6 +14,7 @@ from app.api.routes.profiles import router as profiles_router
 from app.api.routes.monitoring import router as monitoring_router
 from app.api.routes.alerts import router as alerts_router
 from app.api.routes.demo import router as demo_router
+from app.api.routes.admin import router as admin_router
 from app.core.config import get_settings
 
 settings = get_settings()
@@ -32,6 +33,7 @@ app.include_router(profiles_router)
 app.include_router(monitoring_router)
 app.include_router(alerts_router)
 app.include_router(demo_router)
+app.include_router(admin_router)
 
 WEB_DIR = Path(__file__).parent / "web"
 app.mount("/assets", StaticFiles(directory=WEB_DIR), name="assets")
@@ -50,6 +52,8 @@ async def request_logging(request: Request, call_next):
     except Exception:
         logger.exception("Unhandled request failure: %s %s", request.method, request.url.path)
         return JSONResponse({"detail": "Internal server error"}, status_code=500)
+    if request.url.path.startswith("/admin/") or request.method == "DELETE" or request.url.path.endswith("/deletion-preview"):
+        response.headers["Cache-Control"] = "no-store"
     logger.info("%s %s %s %.3fs", request.method, request.url.path,
                 response.status_code, perf_counter() - start)
     return response
@@ -57,7 +61,9 @@ async def request_logging(request: Request, call_next):
 
 @app.get("/dashboard", include_in_schema=False)
 def dashboard():
-    return FileResponse(WEB_DIR / "dashboard.html")
+    return FileResponse(WEB_DIR / "dashboard.html", headers={
+        "Cache-Control": "no-store", "X-Frame-Options": "DENY",
+        "Content-Security-Policy": "frame-ancestors 'none'"})
 
 
 @app.get("/")

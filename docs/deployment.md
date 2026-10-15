@@ -72,7 +72,13 @@ on local CSV files, and database expiry still removes the demo's saved state.
 
 ## Security and operational limits
 
-The dashboard and APIs have **no authentication or per-user isolation**. A
+Optional administrator-only dataset deletion is **disabled by default**. It
+requires explicit credentials and an exact allowed origin; see the
+[administrator configuration and recovery guide](administrator-deletion.md)
+for the Render environment variables, migration `0006`, session limits, and
+retryable file cleanup. No datasets are deleted during migration or startup.
+
+General dashboard APIs have **no authentication or per-user isolation**. A
 public URL therefore exposes model data and allows anyone to submit bounded
 CSV uploads and monitoring requests. Use only synthetic, non-sensitive data;
 add access control before accepting private or real production datasets. CSV

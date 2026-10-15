@@ -1,7 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field, field_validator
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -20,6 +20,10 @@ class Settings(BaseSettings):
     MIN_DRIFT_SAMPLES: int = Field(default=10, ge=2)
     MISSING_RATE_CHANGE: float = Field(default=0.05, gt=0, le=1)
     PERFORMANCE_F1_DROP: float = Field(default=0.10, gt=0, le=1)
+    DATASET_DELETION_ENABLED: bool = False
+    ADMIN_USERNAME: SecretStr = SecretStr("")
+    ADMIN_PASSWORD: SecretStr = SecretStr("")
+    ADMIN_ALLOWED_ORIGIN: str = ""
 
     @field_validator("DATABASE_URL")
     @classmethod

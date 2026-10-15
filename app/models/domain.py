@@ -75,3 +75,17 @@ class Alert(Base):
     message: Mapped[str] = mapped_column(String(500))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class PendingDatasetDeletion(Base):
+    """Durable file-cleanup task, committed with an authorized metadata deletion.
+
+    No dataset foreign key: that row has been deleted. Never contains credentials
+    or CSV content; removed once file cleanup succeeds (also if already missing).
+    """
+    __tablename__ = "pending_dataset_deletions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    dataset_name: Mapped[str] = mapped_column(String(120))
+    file_path: Mapped[str] = mapped_column(String(80), unique=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)

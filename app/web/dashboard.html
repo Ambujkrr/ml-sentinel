@@ -36,6 +36,13 @@
           <div class="stat"><span>DRIFT RUNS</span><strong id="stat-runs">—</strong><small>Saved comparisons</small></div>
           <div class="stat"><span>OPEN ALERTS</span><strong id="stat-alerts">—</strong><small>Needs review</small></div>
         </section>
+        <section id="admin-access" class="panel" aria-label="Administrator access" hidden>
+          <h2>Administrator access</h2>
+          <p class="inline-note" id="admin-status">Sign in to delete unused ordinary datasets. Demo datasets and monitoring history are protected.</p>
+          <a id="admin-sign-in" class="outline-button" href="/admin/login">Administrator sign-in</a>
+          <button id="admin-sign-out" type="button" class="outline-button" hidden>Sign out</button>
+          <div id="pending-deletions"></div>
+        </section>
         <section class="panel" id="models-section">
           <div class="section-heading"><div><h2>Models & datasets</h2><p>Register a model and upload a reference baseline and production sample.</p></div><span class="section-tag">01 / SETUP</span></div>
           <div class="two-column">
@@ -57,5 +64,16 @@
       </div>
     </main>
   </div>
+  <dialog id="delete-dialog" aria-labelledby="delete-title">
+    <form id="delete-form">
+      <div class="delete-dialog-heading"><h2 id="delete-title">Delete dataset?</h2>
+      <p>Dataset: <strong id="delete-dataset-name"></strong></p></div>
+      <p>The following will be permanently removed:</p>
+      <ul id="delete-removals"></ul>
+      <p>Only unused ordinary datasets can be deleted. Monitoring runs, saved comparison reports, alerts, and shared demo datasets will not be deleted.</p>
+      <label class="confirm-checkbox"><input id="delete-confirm" type="checkbox" required>I understand this removal cannot be undone.</label>
+      <div class="dialog-actions"><button id="delete-cancel" type="button" class="outline-button" autofocus>Cancel</button><button id="delete-submit" type="submit" class="danger-button">Delete dataset</button></div>
+    </form>
+  </dialog>
 </body>
 </html>

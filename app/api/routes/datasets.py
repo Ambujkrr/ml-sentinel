@@ -2,6 +2,7 @@ from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi.responses import JSONResponse, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -12,6 +13,8 @@ from app.schemas.domain import DatasetRead
 from app.services.ingestion import ingest_dataset
 from app.services.demo import DEMO_MODEL_ID
 from app.services.storage import LocalStorage, get_storage
+from app.core.admin import require_admin, require_admin_action
+from app.services.deletion import delete_dataset, deletion_preview
 
 router = APIRouter(tags=["datasets"])
 
@@ -40,3 +43,15 @@ def list_datasets(model_id: UUID, limit: int = Query(100, ge=1, le=200),
 @router.get("/datasets/{dataset_id}", response_model=DatasetRead)
 def get_dataset(dataset_id: UUID, db: Session = Depends(get_db)):
     return require_dataset(db, str(dataset_id))
+
+
+@router.get("/datasets/{dataset_id}/deletion-preview", dependencies=[Depends(require_admin)])
+def preview_dataset_deletion(dataset_id: UUID, db: Session = Depends(get_db)):
+    return JSONResponse(deletion_preview(db, str(dataset_id)), headers={"Cache-Control": "no-store"})
+
+
+@router.delete("/datasets/{dataset_id}", status_code=204, dependencies=[Depends(require_admin_action)])
+def remove_dataset(dataset_id: UUID, db: Session = Depends(get_db),
+                   storage: LocalStorage = Depends(get_storage)):
+    delete_dataset(db, storage, str(dataset_id))
+    return Response(status_code=204, headers={"Cache-Control": "no-store"})

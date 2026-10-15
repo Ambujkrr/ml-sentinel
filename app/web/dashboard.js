@@ -1,6 +1,58 @@
 const $ = (selector) => document.querySelector(selector);
 const state = { models: [], datasets: [], runs: [], alerts: [], modelId: null, currentRun: null,
-  demo: null, demoSelected: false, previousColumns: null };
+  demo: null, demoSelected: false, previousColumns: null,
+  admin: { enabled: false, authenticated: false }, pendingDelete: null };
+
+const adminActionHeaders = { 'X-Admin-Action': 'dataset-delete' };
+
+async function loadAdminStatus() {
+  try {
+    state.admin = await api('/admin/session', { cache: 'no-store' });
+    $('#admin-access').hidden = !state.admin.enabled;
+    $('#admin-sign-in').hidden = state.admin.authenticated;
+    $('#admin-sign-out').hidden = !state.admin.authenticated;
+    $('#admin-status').textContent = state.admin.authenticated
+      ? 'Administrator session active (15-minute expiry). Only unused ordinary datasets can be deleted.'
+      : 'Sign in to delete unused ordinary datasets. Demo datasets and monitoring history are protected.';
+    const pending = state.admin.authenticated ? await api('/admin/deletions', { cache: 'no-store' }) : [];
+    $('#pending-deletions').innerHTML = pending.length
+      ? `<p>CSV cleanup needs attention. Metadata was already removed; retry to finish removing the file.</p>${table(['DATASET', 'ACTION'], pending.map((job) => `<tr><td>${escapeHtml(job.name)}</td><td><button data-delete="${job.dataset_id}">Retry file cleanup</button></td></tr>`), '')}`
+      : '';
+  } catch (error) {
+    state.admin = { enabled: false, authenticated: false };
+    $('#admin-access').hidden = true;
+    $('#pending-deletions').replaceChildren();
+  }
+}
+
+function renderDatasets() {
+  const admin = state.admin.authenticated;
+  const headers = ['DATASET', 'TYPE', 'ROWS', 'COLUMNS', 'UPLOADED', 'QUALITY'];
+  if (admin) headers.push('ACTIONS');
+  $('#dataset-list').innerHTML = table(headers,
+    state.datasets.map((dataset) => `<tr><td>${escapeHtml(dataset.name)}</td><td>${badge(dataset.dataset_type)}</td><td>${dataset.row_count}</td><td>${dataset.column_count}</td><td>${date(dataset.created_at)}</td><td><button data-profile="${dataset.id}">View report</button></td>${admin ? `<td>${isDemoModel() ? 'Protected demo' : `<button class="danger-button" data-delete="${dataset.id}">Delete dataset</button>`}</td>` : ''}</tr>`),
+    'No datasets uploaded for this model.');
+}
+
+async function confirmDatasetDeletion(datasetId) {
+  if (!state.admin.authenticated) return flash('Administrator sign-in is required.', true);
+  try {
+    const preview = await api(`/datasets/${datasetId}/deletion-preview`, { cache: 'no-store' });
+    state.pendingDelete = preview;
+    $('#delete-dataset-name').textContent = preview.name;
+    $('#delete-removals').replaceChildren();
+    for (const removal of preview.removes) {
+      const item = document.createElement('li'); item.textContent = removal;
+      $('#delete-removals').appendChild(item);
+    }
+    $('#delete-confirm').checked = false;
+    $('#delete-submit').textContent = preview.cleanup_pending ? 'Finish file cleanup' : 'Delete dataset';
+    $('#delete-dialog').showModal();
+  } catch (error) {
+    await loadAdminStatus(); renderDatasets();
+    flash(error.message, true);
+  }
+}
 
 function isDemoModel() {
   return state.demo !== null && state.modelId === state.demo.model_id;
@@ -110,9 +162,7 @@ async function loadModel() {
   predictionInput.readOnly = demo; actualInput.readOnly = demo;
   $('#run-form button').textContent = demo ? 'View comparison →' : 'Run comparison →';
   state.demoSelected = demo;
-  $('#dataset-list').innerHTML = table(['DATASET', 'TYPE', 'ROWS', 'COLUMNS', 'UPLOADED', 'QUALITY'],
-    state.datasets.map((dataset) => `<tr><td>${escapeHtml(dataset.name)}</td><td>${badge(dataset.dataset_type)}</td><td>${dataset.row_count}</td><td>${dataset.column_count}</td><td>${date(dataset.created_at)}</td><td><button data-profile="${dataset.id}">View report</button></td></tr>`),
-    'No datasets uploaded for this model.');
+  renderDatasets();
   for (const [selector, type] of [['#reference-select', 'reference'], ['#production-select', 'production']]) {
     const items = state.datasets.filter((dataset) => dataset.dataset_type === type);
     const previousValue = $(selector).value;
@@ -240,7 +290,33 @@ $('#model-select').addEventListener('change', async (event) => {
   catch (error) { flash(error.message, true); }
 });
 
-$('#refresh').addEventListener('click', () => refresh());
+$('#refresh').addEventListener('click', async () => { await loadAdminStatus(); await refresh(); });
+
+$('#admin-sign-out').addEventListener('click', async () => {
+  try { await api('/admin/logout', { method: 'POST', headers: adminActionHeaders }); }
+  catch (error) { flash(error.message, true); }
+  await loadAdminStatus(); renderDatasets();
+});
+
+$('#delete-cancel').addEventListener('click', () => $('#delete-dialog').close());
+$('#delete-dialog').addEventListener('close', () => { state.pendingDelete = null; });
+$('#delete-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  if (!state.pendingDelete || !$('#delete-confirm').checked || $('#delete-submit').disabled) return;
+  const pending = state.pendingDelete;
+  $('#delete-submit').disabled = true;
+  try {
+    await api(`/datasets/${pending.dataset_id}`, { method: 'DELETE', headers: adminActionHeaders });
+    $('#delete-dialog').close();
+    $('#detail-section').hidden = true;
+    await loadAdminStatus(); await refresh();
+    flash(`Removed ${pending.name} and its eligible data. Monitoring history and alerts were preserved.`);
+  } catch (error) {
+    $('#delete-dialog').close();
+    await loadAdminStatus(); await refresh();
+    flash(error.message, true);
+  } finally { $('#delete-submit').disabled = false; }
+});
 
 $('#load-demo').addEventListener('click', async () => {
   const button = $('#load-demo');
@@ -305,6 +381,7 @@ $('#run-form').addEventListener('submit', async (event) => {
 document.addEventListener('click', async (event) => {
   const target = event.target;
   if (target.dataset.profile) return showProfile(target.dataset.profile);
+  if (target.dataset.delete) return confirmDatasetDeletion(target.dataset.delete);
   if (target.dataset.run) return showRun(target.dataset.run);
   if (target.dataset.resolve) {
     try { await api(`/alerts/${target.dataset.resolve}/resolve`, { method: 'PATCH' }); await refresh(); flash('Alert marked resolved.'); }
@@ -320,4 +397,7 @@ $('#feature-select').addEventListener('change', (event) => {
 });
 
 // Metadata is read-only. Merely opening the dashboard never seeds the database.
-api('/demo').then((demo) => { state.demo = demo; }).catch(() => {}).finally(() => refresh());
+Promise.all([
+  api('/demo').then((demo) => { state.demo = demo; }).catch(() => {}),
+  loadAdminStatus()
+]).finally(() => refresh());

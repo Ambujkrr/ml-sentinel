@@ -31,7 +31,15 @@ class LocalStorage:
         return self._path(key).read_bytes()
 
     def delete(self, key: str) -> None:
-        self._path(key).unlink(missing_ok=True)
+        self.validate_delete_key(key)
+        # Unlink the entry itself, never a symlink's resolved target.
+        (self.root / key).unlink(missing_ok=True)
+
+    def validate_delete_key(self, key: str) -> None:
+        # Reject paths/symlinks escaping storage before committing metadata removal.
+        if (self.root / key).is_symlink():
+            raise ValueError("Refusing to delete a symbolic link")
+        self._path(key)
 
 
 def get_storage() -> LocalStorage:

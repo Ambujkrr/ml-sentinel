@@ -14,6 +14,10 @@ from sqlalchemy.pool import StaticPool
 
 # Set before application imports so tests cannot use a developer's DATABASE_URL.
 os.environ["DATABASE_URL"] = "sqlite+pysqlite:///:memory:"
+os.environ["DATASET_DELETION_ENABLED"] = "false"
+os.environ["ADMIN_USERNAME"] = ""
+os.environ["ADMIN_PASSWORD"] = ""
+os.environ["ADMIN_ALLOWED_ORIGIN"] = ""
 
 from app.db.session import get_db  # noqa: E402
 from app.main import app  # noqa: E402

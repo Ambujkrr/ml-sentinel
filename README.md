@@ -41,7 +41,7 @@ performance measurement rather than inference from drift alone.
 - Responsive dashboard driven by API responses
 - Deterministic loan risk demo datasets
 
-No model training, automated streaming ingestion, authentication, or external
+No model training, automated streaming ingestion, general user authentication, or external
 notification service is included.
 
 ## Architecture
@@ -168,7 +168,7 @@ uploaded demo models. A damaged seed or reserved-ID collision returns HTTP 409
 for operator review; initialization errors roll back the entire transaction.
 Saved reports retain their original thresholds until an operator explicitly
 manages them; the public endpoint cannot reset or regenerate the seed. The
-shared database still has no authentication, and the existing general upload
+application still has no per-user isolation, and the existing general upload
 and model APIs keep their documented public-access limitations. No demo state
 survives expiry or deletion of the free PostgreSQL database itself.
 
@@ -204,6 +204,10 @@ Interview walkthrough:
 | GET | `/`, `/health` | Application and health status |
 | GET | `/dashboard` | Monitoring console |
 | GET, POST | `/demo`, `/demo/load` | Demo metadata and bounded, idempotent synthetic initialization |
+| GET, POST | `/admin/login` | Optional deletion-only administrator sign-in (disabled by default) |
+| GET, POST | `/admin/session`, `/admin/logout` | Administrator status and session revocation |
+| GET | `/admin/deletions` | Administrator-only pending CSV cleanup tasks |
+| GET, DELETE | `/datasets/{dataset_id}/deletion-preview`, `/datasets/{dataset_id}` | Protected preview and deletion of unused ordinary uploads |
 | POST, GET | `/models` | Register and list models |
 | GET | `/models/{model_id}` | Model details |
 | POST, GET | `/models/{model_id}/datasets` | Upload and list model datasets |
@@ -223,7 +227,8 @@ Open `/docs` for request/response schemas and interactive API documentation.
 one `dataset_profiles` row containing the bounded JSON profile and quality
 snapshot. A run references a reference dataset and a production dataset,
 records its status and JSON report, and has zero or more `alerts`.
-Migration files `0001` through `0005` create and evolve these tables. Normal
+Migration files `0001` through `0006` create and evolve these tables, including
+the retryable `pending_dataset_deletions` file-cleanup queue. Normal
 startup uses `alembic upgrade head`, not `Base.metadata.create_all()`.
 
 ## Local Setup
@@ -313,7 +318,12 @@ docs/                 Deployment and verification notes
 
 ## Limitations
 
-- There is no authentication or per-user isolation. Use synthetic data in a
+- Optional administrator-only deletion is disabled by default. It requires
+  explicitly configured credentials and an exact allowed origin, and only
+  deletes unused ordinary uploads after confirmation. Demo datasets and all
+  monitoring history remain protected. See
+  [administrator setup and recovery](docs/administrator-deletion.md).
+- General APIs have no authentication or per-user isolation. Use synthetic data in a
   public demo; add access control before accepting sensitive data.
 - Local uploads require a persistent disk and are tied to one application
   instance. Object storage would be needed for scaling across instances.
@@ -329,7 +339,7 @@ docs/                 Deployment and verification notes
 
 ## Future Improvements
 
-Add authentication, object storage, regression metrics, scheduled batch
+Add general user authentication, object storage, regression metrics, scheduled batch
 monitoring, delayed-label updates, configurable per-model thresholds, and
 multiple-testing correction. These are not implemented yet.
 
