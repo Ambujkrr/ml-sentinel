@@ -27,10 +27,9 @@ async function loadAdminStatus() {
 
 function renderDatasets() {
   const admin = state.admin.authenticated;
-  const headers = ['DATASET', 'TYPE', 'ROWS', 'COLUMNS', 'UPLOADED', 'QUALITY'];
-  if (admin) headers.push('ACTIONS');
+  const headers = ['DATASET', 'TYPE', 'ROWS', 'COLUMNS', 'UPLOADED', 'ACTIONS'];
   $('#dataset-list').innerHTML = table(headers,
-    state.datasets.map((dataset) => `<tr><td>${escapeHtml(dataset.name)}</td><td>${badge(dataset.dataset_type)}</td><td>${dataset.row_count}</td><td>${dataset.column_count}</td><td>${date(dataset.created_at)}</td><td><button data-profile="${dataset.id}">View report</button></td>${admin ? `<td>${isDemoModel() ? 'Protected demo' : `<button class="danger-button" data-delete="${dataset.id}">Delete dataset</button>`}</td>` : ''}</tr>`),
+    state.datasets.map((dataset) => `<tr><td>${escapeHtml(dataset.name)}</td><td>${badge(dataset.dataset_type)}</td><td>${dataset.row_count}</td><td>${dataset.column_count}</td><td>${date(dataset.created_at)}</td><td><button data-profile="${dataset.id}">View report</button> ${admin ? (isDemoModel() ? 'Protected demo' : `<button class="danger-button" data-delete="${dataset.id}">Delete</button>`) : ''}</td></tr>`),
     'No datasets uploaded for this model.');
 }
 
@@ -40,6 +39,7 @@ async function confirmDatasetDeletion(datasetId) {
     const preview = await api(`/datasets/${datasetId}/deletion-preview`, { cache: 'no-store' });
     state.pendingDelete = preview;
     $('#delete-dataset-name').textContent = preview.name;
+    $('#delete-dataset-id').textContent = preview.dataset_id;
     $('#delete-removals').replaceChildren();
     for (const removal of preview.removes) {
       const item = document.createElement('li'); item.textContent = removal;
@@ -305,6 +305,8 @@ $('#delete-form').addEventListener('submit', async (event) => {
   if (!state.pendingDelete || !$('#delete-confirm').checked || $('#delete-submit').disabled) return;
   const pending = state.pendingDelete;
   $('#delete-submit').disabled = true;
+  $('#delete-submit').textContent = 'Deleting…';
+  $('#delete-submit').setAttribute('aria-busy', 'true');
   try {
     await api(`/datasets/${pending.dataset_id}`, { method: 'DELETE', headers: adminActionHeaders });
     $('#delete-dialog').close();
@@ -315,7 +317,10 @@ $('#delete-form').addEventListener('submit', async (event) => {
     $('#delete-dialog').close();
     await loadAdminStatus(); await refresh();
     flash(error.message, true);
-  } finally { $('#delete-submit').disabled = false; }
+  } finally {
+    $('#delete-submit').disabled = false;
+    $('#delete-submit').removeAttribute('aria-busy');
+  }
 });
 
 $('#load-demo').addEventListener('click', async () => {

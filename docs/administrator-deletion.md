@@ -49,7 +49,11 @@ upload directory. Local HTTP origins are rejected in production.
   demo model are permanently rejected on the server, even for administrators.
 - A dataset used as either the reference or production input of any saved run
   returns HTTP 409. Its metadata, profile, CSV, run reports, and alerts remain.
-- The confirmation dialog displays the dataset name and every kind of data to
+- The Actions column keeps View report available to everyone and shows Delete
+  only to signed-in administrators for ordinary datasets. If Delete is missing,
+  check `/admin/session`: `enabled: false` means configuration is incomplete or
+  disabled; `authenticated: false` requires administrator sign-in.
+- The confirmation dialog displays the dataset name, unique database ID, and every kind of data to
   be removed. Cancel, Escape, or a preview request alone changes nothing.
 - An eligible deletion removes dataset metadata and its stored profile/quality
   report in one transaction. No model, monitoring run, report, or alert is deleted.
@@ -59,6 +63,10 @@ upload directory. Local HTTP origins are rejected in production.
 - The CSV is removed only after the metadata transaction commits. A file already
   missing from Render's ephemeral filesystem is treated as successfully cleaned.
   Paths escaping the upload directory and symbolic links are rejected.
+- Before file cleanup (including retries), surviving dataset references to that
+  storage key are checked. A shared CSV is retained until its last dataset is
+  deleted. Current uploads already enforce unique storage keys; this check also
+  protects legacy shared paths. No schema changes are required for this fix.
 
 ## Failure recovery
 

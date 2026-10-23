@@ -5,6 +5,7 @@ from threading import RLock
 
 from fastapi import HTTPException
 from sqlalchemy import delete, func, or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models.domain import Dataset, DatasetProfile, MonitoringRun, PendingDatasetDeletion
@@ -37,17 +38,22 @@ def deletion_preview(db: Session, dataset_id: str) -> dict:
     if dataset is not None:
         check_unused(db, dataset)
         return {"dataset_id": dataset.id, "name": dataset.name, "cleanup_pending": False,
-                "removes": ["Dataset metadata", "Stored profile and quality report", "Uploaded CSV file, if still present"]}
+                "removes": ["Dataset metadata", "Stored profile and quality report", "Uploaded CSV file, if present and not referenced by another dataset"]}
     pending = db.get(PendingDatasetDeletion, dataset_id)
     if pending is None:
         raise HTTPException(404, "Dataset not found")
     return {"dataset_id": pending.id, "name": pending.dataset_name, "cleanup_pending": True,
-            "removes": ["Remaining uploaded CSV file (metadata was already removed)"]}
+            "removes": ["Remaining uploaded CSV file, if not referenced by another dataset (metadata was already removed)"]}
 
 
 def finish_cleanup(db: Session, storage: LocalStorage, job: PendingDatasetDeletion):
     try:
-        storage.delete(job.file_path)
+        # Legacy data or a retried cleanup may reference a file still in use.
+        # Current uploads use fresh UUID keys and a unique constraint; never
+        # remove a surviving dataset's file even if older data lacked that guard.
+        shared = db.scalar(select(Dataset.id).where(Dataset.file_path == job.file_path).limit(1))
+        if shared is None:
+            storage.delete(job.file_path)
         db.execute(delete(PendingDatasetDeletion).where(PendingDatasetDeletion.id == job.id))
         db.commit()
     except Exception as exc:
@@ -84,6 +90,9 @@ def delete_dataset(db: Session, storage: LocalStorage, dataset_id: str):
         except HTTPException:
             db.rollback()
             raise
+        except IntegrityError as exc:
+            db.rollback()
+            raise HTTPException(409, "Dataset is still referenced by other records and cannot safely be deleted") from exc
         except Exception as exc:
             db.rollback()
             logger.warning("Dataset deletion transaction failed (%s)", type(exc).__name__)

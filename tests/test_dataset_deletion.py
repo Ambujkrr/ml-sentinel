@@ -10,11 +10,12 @@ from alembic import command
 from alembic.config import Config
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
-from sqlalchemy import create_engine, event, func, select
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy import create_engine, event, func, select, MetaData, UniqueConstraint
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.core import admin
+from app.db.base import Base
 from app.core.config import get_settings
 from app.db.session import get_db
 from app.main import app
@@ -22,6 +23,7 @@ from app.models.domain import (Alert, Dataset, DatasetProfile, MonitoredModel,
                                MonitoringRun, PendingDatasetDeletion)
 from app.services.demo import DEMO_DATASET_IDS, DEMO_MODEL_ID
 from app.services.storage import LocalStorage, get_storage
+from app.services.deletion import delete_dataset
 
 ORIGIN = "http://localhost"
 HEADERS = {"Origin": ORIGIN, "X-Admin-Action": admin.ACTION_HEADER}
@@ -230,6 +232,66 @@ def test_missing_csv_does_not_block_metadata_cleanup(signed_in, upload_dataset, 
     assert counts(db) == (1, 0, 0, 0, 0, 0)
 
 
+def test_duplicate_names_delete_only_selected_id(signed_in, upload_dataset, db, storage):
+    first = upload_dataset(name="synthetic reference").json()
+    second = upload_dataset(name="synthetic reference").json()
+    survivor_key = db.get(Dataset, second["id"]).file_path
+    content = storage.read(survivor_key)
+    preview = signed_in.get(f"/datasets/{first['id']}/deletion-preview").json()
+    assert preview["dataset_id"] == first["id"] and preview["name"] == second["name"]
+    assert delete(signed_in, first["id"]).status_code == 204
+    assert signed_in.get(f"/datasets/{second['id']}").status_code == 200
+    assert storage.read(survivor_key) == content
+    assert counts(db) == (1, 1, 1, 0, 0, 0)
+
+
+def test_pending_cleanup_preserves_file_referenced_by_dataset(signed_in, upload_dataset, db, storage):
+    uploaded = upload_dataset().json()
+    key = db.get(Dataset, uploaded["id"]).file_path
+    original = storage.read(key)
+    pending_id = str(uuid4())
+    db.add(PendingDatasetDeletion(id=pending_id, dataset_name="Old record", file_path=key))
+    db.commit()
+    assert delete(signed_in, pending_id).status_code == 204
+    assert storage.read(key) == original
+    assert counts(db) == (1, 1, 1, 0, 0, 0)
+
+
+def test_legacy_shared_file_is_removed_only_after_last_dataset(storage):
+    # Disposable legacy schema without the current file_path uniqueness guard.
+    metadata = MetaData()
+    for table in Base.metadata.sorted_tables:
+        table.to_metadata(metadata)
+    datasets = metadata.tables["datasets"]
+    for constraint in list(datasets.constraints):
+        if isinstance(constraint, UniqueConstraint):
+            datasets.constraints.remove(constraint)
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    @event.listens_for(engine, "connect")
+    def foreign_keys(connection, _record):
+        connection.execute("PRAGMA foreign_keys=ON")
+    metadata.create_all(engine)
+    key = storage.save(b"synthetic\n1\n")
+    try:
+        with Session(engine, expire_on_commit=False) as db:
+            model = MonitoredModel(name="Disposable shared-file fixture")
+            db.add(model)
+            db.flush()
+            pair = [Dataset(model_id=model.id, name="Duplicate", dataset_type="reference",
+                            file_name="shared.csv", file_path=key, row_count=1, column_count=1)
+                    for _ in range(2)]
+            db.add_all(pair)
+            db.commit()
+            first_id, second_id = [item.id for item in pair]
+            delete_dataset(db, storage, first_id)
+            assert storage.read(key) == b"synthetic\n1\n"
+            assert db.get(Dataset, second_id) is not None
+            delete_dataset(db, storage, second_id)
+            assert not storage._path(key).exists()
+    finally:
+        engine.dispose()
+
+
 def test_missing_legacy_profile_is_safe(signed_in, upload_dataset, db):
     uploaded = upload_dataset().json()
     db.delete(db.get(DatasetProfile, uploaded["id"]))
@@ -298,6 +360,23 @@ def test_database_failure_keeps_csv_and_rolls_back_profiles(signed_in, upload_da
     assert "private credential" not in response.text + caplog.text
     assert counts(db) == (1, 1, 1, 0, 0, 0) and storage.read(key) == original
     assert delete(signed_in, uploaded["id"]).status_code == 204
+
+
+def test_foreign_key_conflict_returns_clear_error_without_removing_data(signed_in, upload_dataset, db, storage, monkeypatch):
+    uploaded = upload_dataset().json()
+    key = db.get(Dataset, uploaded["id"]).file_path
+    original = storage.read(key)
+    with monkeypatch.context() as patch:
+        def conflict():
+            db.flush()
+            raise IntegrityError("private SQL", {}, Exception("foreign key constraint"))
+        patch.setattr(db, "commit", conflict)
+        response = delete(signed_in, uploaded["id"])
+    assert response.status_code == 409
+    assert "still referenced" in response.json()["detail"]
+    assert "private SQL" not in response.text
+    assert counts(db) == (1, 1, 1, 0, 0, 0)
+    assert storage.read(key) == original
 
 
 def test_storage_failure_leaves_durable_retryable_cleanup(signed_in, upload_dataset, db, storage, monkeypatch, caplog):
@@ -504,6 +583,8 @@ def test_confirmation_markup_and_no_credentials_in_dashboard(client, credentials
     page = response.text
     assert 'id="delete-dialog"' in page and 'id="delete-dataset-name"' in page
     assert 'id="delete-removals"' in page and 'id="delete-cancel"' in page
+    assert 'id="delete-dataset-id"' in page
+    assert "Are you sure you want to delete this dataset? This action cannot be undone." in page
     script = client.get("/assets/dashboard.js").text
     assert "ADMIN_PASSWORD" not in script and "localStorage" not in script
     assert "sessionStorage" not in script
